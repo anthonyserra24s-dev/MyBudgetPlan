@@ -9,8 +9,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="BudgetPlan">
 <meta name="format-detection" content="telephone=no">
-<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjMTIxNTFBIi8+PHRleHQgeD0iNTAiIHk9IjY0IiBmb250LWZhbWlseT0iLWFwcGxlLXN5c3RlbSxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjQwIiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjRjZGN0Y5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5CUDwvdGV4dD48L3N2Zz4=">
-<link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjMTIxNTFBIi8+PHRleHQgeD0iNTAiIHk9IjY0IiBmb250LWZhbWlseT0iLWFwcGxlLXN5c3RlbSxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjQwIiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjRjZGN0Y5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5CUDwvdGV4dD48L3N2Zz4=">
+<!-- Favicon / Logo dans l'onglet du navigateur -->
+<link rel="icon" type="image/png" href="logo.png">
+
+<!-- Apple Touch Icon pour quand tu l'ajoutes sur l'écran d'accueil de ton téléphone -->
+<link rel="apple-touch-icon" href="logo.png">
 <title>BudgetPlan</title>
 <style>
   :root{
@@ -401,7 +404,10 @@
 <body>
 <div class="app">
   <nav class="sidebar" id="sidebar">
-    <div class="brand"><div class="mark">BudgetPlan</div><div class="sub">Ma gestion financière</div></div>
+    <div class="brand" style="display:flex;align-items:center;gap:10px;">
+      <img src="logo.png" alt="BudgetPlan Logo" style="width:40px;height:40px;border-radius:8px;flex-shrink:0;">
+      <div><div class="mark">BudgetPlan</div><div class="sub">Ma gestion financière</div></div>
+    </div>
     <ul class="navlist" id="navlist"></ul>
     <div class="sidebar-foot">Données stockées localement<br>dans ce navigateur.</div>
   </nav>
