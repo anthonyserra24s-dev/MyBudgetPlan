@@ -218,6 +218,8 @@
   .badge-shared{background:#E8EFFD;color:#1D4ED8;border-color:#D7E3FC;}
   .badge-loan{background:#FEF3E2;color:#B45309;border-color:#FBE3BD;}
   .badge-settlement{background:#E4F7ED;color:#0F9D58;border-color:#CFEEDC;}
+  .badge-tag{background:#FFF4E5;color:#B45900;border-color:#FCE1BB;display:inline-flex;align-items:center;gap:3px;}
+  .badge-tag .icn{width:11px;height:11px;}
   .tx-amt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:.92rem;}
 
   .empty{text-align:center;padding:36px 16px;color:var(--text-faint);font-size:.86rem;}
@@ -341,6 +343,7 @@
 
   @media(max-width:860px){
     .sidebar{position:fixed;left:0;top:0;transform:translateX(-100%);width:82vw;max-width:300px;}
+    .sidebar .brand{padding-top:calc(22px + env(safe-area-inset-top, 20px));}
     .sidebar.open{transform:translateX(0);}
     .topbar{display:flex;}
     .overlay.show{display:block;}
@@ -370,6 +373,7 @@
       padding-left:env(safe-area-inset-left, 16px);
       z-index:40;
     }
+    .sidebar .brand{padding-top:calc(22px + env(safe-area-inset-top, 12px));}
     .sidebar.open{transform:translateX(0);}
 
     /* Barre du haut avec bouton toggle ☰, décalée de l'encoche */
@@ -458,6 +462,11 @@
       <div class="field">
         <label for="tx_note">Note</label>
         <textarea id="tx_note" placeholder="Précision facultative…"></textarea>
+      </div>
+      <div class="field">
+        <label for="tx_tag">Tag (optionnel)</label>
+        <input id="tx_tag" list="tagSuggestions" placeholder="ex : Vacances, Projet Web, Cadeaux…">
+        <datalist id="tagSuggestions"></datalist>
       </div>
 
       <label class="checkline"><input type="checkbox" id="tx_recurring_toggle"> Transaction récurrente / automatique</label>
@@ -633,6 +642,10 @@
         <div class="field"><label>Montant calculé</label><div class="computed-amount" id="inc_computed">0,00 €</div></div>
       </div>
       <div class="field"><label for="inc_date">Date de paiement prévue</label><input type="date" id="inc_date"></div>
+      <div class="field">
+        <label for="inc_tag">Tag (optionnel)</label>
+        <input id="inc_tag" list="tagSuggestions" placeholder="ex : Vacances, Projet Web, Cadeaux…">
+      </div>
       <div class="dlg-foot">
         <button type="button" class="btn danger" id="incomeDeleteBtn" style="display:none;">Supprimer</button>
         <div style="flex:1"></div>
@@ -660,6 +673,10 @@
       <div class="field-row">
         <div class="field"><label for="pe_account">Compte concerné</label><select id="pe_account"></select></div>
         <div class="field"><label for="pe_category">Catégorie</label><select id="pe_category"></select></div>
+      </div>
+      <div class="field">
+        <label for="pe_tag">Tag (optionnel)</label>
+        <input id="pe_tag" list="tagSuggestions" placeholder="ex : Vacances, Projet Web, Cadeaux…">
       </div>
       <p class="split-hint">Cette dépense n'impacte aucun compte pour l'instant : le solde ne bougera qu'au moment où vous cliquerez sur « Marquer réglé ».</p>
       <div class="dlg-foot">
@@ -877,7 +894,8 @@ const ICON_PATHS = {
   dumbbell:'<path d="M2.5 8.5v3M2.5 6.5v7"/><path d="M17.5 8.5v3M17.5 6.5v7"/><rect x="5" y="8" width="2.2" height="4" rx=".5"/><rect x="12.8" y="8" width="2.2" height="4" rx=".5"/><path d="M7.2 10h5.6"/>',
   heart:'<path d="M10 16.5s-6-3.6-6-8A3.6 3.6 0 0110 6.2 3.6 3.6 0 0116 8.5c0 4.4-6 8-6 8z"/>',
   gift:'<rect x="3" y="8.5" width="14" height="8.5" rx="1"/><path d="M3 8.5h14M10 8.5v8.5"/><path d="M10 8.5c0-2.2-1.6-4-3.2-4S4.6 5.8 5.2 7.3 8 8.5 10 8.5zM10 8.5c0-2.2 1.6-4 3.2-4s2.2 1.3 1.6 2.8-3.6 1.2-4.8 1.2"/>',
-  briefcase:'<rect x="2.5" y="6.5" width="15" height="9.5" rx="1.5"/><path d="M7 6.5V5a1.5 1.5 0 011.5-1.5h3A1.5 1.5 0 0113 5v1.5M2.5 10.5h15"/>'
+  briefcase:'<rect x="2.5" y="6.5" width="15" height="9.5" rx="1.5"/><path d="M7 6.5V5a1.5 1.5 0 011.5-1.5h3A1.5 1.5 0 0113 5v1.5M2.5 10.5h15"/>',
+  alert:'<path d="M10 2.5l8.2 14.2a1 1 0 01-.9 1.5H2.7a1 1 0 01-.9-1.5L10 2.5z"/><path d="M10 8v4"/><circle cx="10" cy="14.5" r=".9" fill="currentColor" stroke="none"/>'
 };
 function icon(name, size){
   size = size || 18;
@@ -1216,7 +1234,7 @@ function ensureOccurrences(){
       guard++;
       const newTx = {
         id: uid(), type: root.type, account: root.account, category: root.category,
-        amount: root.amount, date: due, note: root.note,
+        amount: root.amount, date: due, note: root.note, tag: root.tag||"",
         recurrence: null, seriesId: root.id
       };
       state.transactions.push(newTx);
@@ -1290,14 +1308,28 @@ function cleanupSettlementRefs(removedIds){
     }
   });
 }
-// When the original expense transaction behind a debt split is deleted.
+// When the original expense/income transaction behind a debt split is deleted, the debt no
+// longer has anything to track — remove it entirely, along with any reimbursement/settlement
+// transactions already made against it (e.g. your brother's repayment for the Cagliari flight).
 function cascadeCleanupForDeletedTx(txId){
+  const candidateTxIds = new Set();
   state.debts = state.debts.filter(d=>{
     if(d.sourceTxId!==txId) return true;
-    if(!d.payments || d.payments.length===0) return false; // untouched: remove entirely
-    d.sourceTxId = null; // detach but preserve historical record
-    return true;
+    (d.payments||[]).forEach(p=>{ if(p.txId) candidateTxIds.add(p.txId); });
+    return false; // drop the debt line — its own payments go with it
   });
+  if(candidateTxIds.size){
+    // A single reimbursement can cover several debt lines at once (e.g. one payment settling
+    // both the Cagliari flight and a separate dinner debt) — only delete the settlement
+    // transaction if no remaining debt still points to it.
+    const stillReferenced = new Set();
+    state.debts.forEach(d=> (d.payments||[]).forEach(p=>{ if(p.txId) stillReferenced.add(p.txId); }));
+    const toRemove = Array.from(candidateTxIds).filter(tid=> !stillReferenced.has(tid));
+    if(toRemove.length){
+      const idSet = new Set(toRemove);
+      state.transactions = state.transactions.filter(t=> !idSet.has(t.id));
+    }
+  }
 }
 
 /* ============================= BALANCE / DERIVED ============================= */
@@ -1340,6 +1372,14 @@ function categoryBreakdown(list, type){
   list.filter(t=>t.type===type).forEach(t=>{ map[t.category] = (map[t.category]||0) + t.amount; });
   return Object.entries(map).sort((a,b)=>b[1]-a[1]);
 }
+// Distinct tags used across all transactions, alphabetically sorted, for suggestions and filters.
+function allTags(){
+  const set = new Set();
+  state.transactions.forEach(t=>{ if(t.tag && t.tag.trim()) set.add(t.tag.trim()); });
+  state.pendingIncomes.forEach(i=>{ if(i.tag && i.tag.trim()) set.add(i.tag.trim()); });
+  state.plannedExpenses.forEach(e=>{ if(e.tag && e.tag.trim()) set.add(e.tag.trim()); });
+  return Array.from(set).sort((a,b)=>a.localeCompare(b));
+}
 function pendingIncomeAmount(inc){
   return inc.mode==="hours" ? round2((Number(inc.hours)||0)*(Number(inc.rate)||0)) : round2(Number(inc.amount)||0);
 }
@@ -1370,16 +1410,61 @@ function getSettledDebts(){
       return da<db?1:-1;
     });
 }
-function createSettlementTx(direction, amount, date, account, note){
-  const tx = {id:uid(), type: direction==="onMeDoit"?"revenu":"depense", account, category:"Remboursement", amount, date, note, recurrence:null, seriesId:null, isSettlement:true};
+function createSettlementTx(direction, amount, date, account, note, tag){
+  const tx = {id:uid(), type: direction==="onMeDoit"?"revenu":"depense", account, category:"Remboursement", amount, date, note, tag: tag||"", recurrence:null, seriesId:null, isSettlement:true};
   state.transactions.push(tx);
   return tx;
 }
 // Apply a (possibly partial) payment across one or more debt lines (all same direction), oldest first.
 function settleLines(lines, amount, direction, date, account, personName){
-  const tx = createSettlementTx(direction, amount, date, account, `Remboursement — ${personName}`);
+  // If every line being settled traces back to a source transaction sharing the same tag
+  // (e.g. all part of the same "Cagliari" trip), the reimbursement inherits that tag too —
+  // so a repayment from your brother still counts toward the trip's cumulative cost.
+  const sourceTags = lines.map(l=> l.sourceTxId ? (state.transactions.find(t=>t.id===l.sourceTxId)||{}).tag||"" : "").filter(t=>t);
+  const uniqueTags = Array.from(new Set(sourceTags));
+  const inheritedTag = uniqueTags.length===1 ? uniqueTags[0] : "";
+  const tx = createSettlementTx(direction, amount, date, account, `Remboursement — ${personName}`, inheritedTag);
   let left = amount;
   lines.forEach(line=>{
+    if(left<=0.004) return;
+    const pay = Math.min(line.remaining, left);
+    if(pay<=0) return;
+    line.remaining = Math.max(0, round2(line.remaining-pay));
+    line.payments = line.payments || [];
+    line.payments.push({id:uid(), date, account, amount:pay, txId:tx.id});
+    left -= pay;
+  });
+  saveState();
+}
+// Settle a person's NET balance: when debts exist in both directions (they owe you for one
+// thing, you owe them for another), paying just the net difference used to leave the opposite-
+// direction debt lines untouched and stuck in the active list. Settling the net should close out
+// the whole relationship: the minority-direction lines are cancelled by mutual compensation
+// (no separate cash movement — already reflected in the single net settlement transaction), and
+// the majority-direction lines are cleared in full using that compensation plus the real cash paid.
+function settleGroupNet(group, amount, direction, date, account, personName){
+  const minorityDirection = direction==="onMeDoit" ? "jeDois" : "onMeDoit";
+  const majorityLines = group.lines.filter(l=> l.direction===direction && l.remaining>0.004).sort((a,b)=> a.date<b.date?-1:1);
+  const minorityLines = group.lines.filter(l=> l.direction===minorityDirection && l.remaining>0.004);
+
+  const allLines = majorityLines.concat(minorityLines);
+  const sourceTags = allLines.map(l=> l.sourceTxId ? (state.transactions.find(t=>t.id===l.sourceTxId)||{}).tag||"" : "").filter(t=>t);
+  const uniqueTags = Array.from(new Set(sourceTags));
+  const inheritedTag = uniqueTags.length===1 ? uniqueTags[0] : "";
+
+  const tx = createSettlementTx(direction, amount, date, account, `Remboursement — ${personName}`, inheritedTag);
+
+  let compensated = 0;
+  minorityLines.forEach(line=>{
+    const pay = line.remaining;
+    line.payments = line.payments || [];
+    line.payments.push({id:uid(), date, account, amount:pay, txId:tx.id});
+    line.remaining = 0;
+    compensated = round2(compensated + pay);
+  });
+
+  let left = round2(amount + compensated);
+  majorityLines.forEach(line=>{
     if(left<=0.004) return;
     const pay = Math.min(line.remaining, left);
     if(pay<=0) return;
@@ -1422,7 +1507,8 @@ let sidebarExpandedGroups = new Set();
 let viewState = {
   period: {
     mode:"month", monthCursor: new Date(), yearCursor: new Date().getFullYear(),
-    dayCursor: new Date(), customCursor: new Date(), customInterval: 1, customUnit: "mois"
+    dayCursor: new Date(), customCursor: new Date(), customInterval: 1, customUnit: "mois",
+    tagFilter: ""
   },
   txFilter: {account:"", category:"", type:"", search:""}
 };
@@ -1533,6 +1619,48 @@ function buildBottomNavSkeleton(){
 }
 
 /* ---------- Dashboard ---------- */
+// Gathers payments coming up soon (planned expenses + recurring expense occurrences), including
+// anything already overdue, for the dashboard warning widget. windowDays controls how far ahead
+// (from today) counts as "approaching" — overdue items are always included regardless of window.
+function getUpcomingPayments(windowDays){
+  const today = todayISO();
+  const horizon = toISO(addInterval(new Date(today), windowDays, "jours"));
+  const items = [];
+
+  state.plannedExpenses.forEach(pe=>{
+    if(pe.status!=="attente") return;
+    if(!pe.expectedDate) return;
+    if(pe.expectedDate > horizon) return;
+    items.push({
+      kind:"expense", refId:pe.id, label:pe.label, amount:pe.amount, date:pe.expectedDate,
+      sub:esc(pe.category)
+    });
+  });
+
+  state.transactions.filter(t=> t.type==="depense" && t.recurrence && t.recurrence.enabled).forEach(root=>{
+    const due = nextPendingDate(root);
+    if(!due) return;
+    if(due > horizon) return;
+    items.push({
+      kind:"recurring", refId:root.id, label:root.note || root.category, amount:root.amount, date:due,
+      sub:esc(root.category)
+    });
+  });
+
+  items.forEach(it=>{
+    it.overdue = it.date < today;
+    it.daysUntil = Math.round((new Date(it.date+"T00:00:00") - new Date(today+"T00:00:00")) / 86400000);
+  });
+  return items.sort((a,b)=> a.date<b.date?-1:1);
+}
+function upcomingPaymentDueLabel(it){
+  if(it.overdue) return `En retard (${Math.abs(it.daysUntil)} j)`;
+  if(it.daysUntil===0) return "Aujourd'hui";
+  if(it.daysUntil===1) return "Demain";
+  return `Dans ${it.daysUntil} jours`;
+}
+
+
 function renderDashboard(){
   const total = totalBalance();
   const totalRef = state.accounts.reduce((s,a)=> s + variationReferenceValue(a.id), 0);
@@ -1559,6 +1687,28 @@ function renderDashboard(){
   const recentHtml = recent.length ? recent.map(t=>renderTxItem(t)).join("") :
     `<div class="empty">Aucune transaction pour l'instant.</div>`;
 
+  const upcomingPayments = getUpcomingPayments(7);
+  const upcomingHtml = upcomingPayments.length ? `
+    <div class="card" style="margin-bottom:20px;border-left:3px solid var(--warn);background:#FFF8EE;">
+      <h2 style="margin-bottom:2px;display:flex;align-items:center;gap:8px;">${icon("alert",18)} Paiements en approche</h2>
+      <p class="hint" style="margin-bottom:10px;">Échéances des 7 prochains jours (dépenses à venir + récurrences)</p>
+      ${upcomingPayments.map(it=>{
+        const due = upcomingPaymentDueLabel(it);
+        const dueColor = it.overdue ? "var(--expense)" : (it.daysUntil<=2 ? "var(--warn)" : "#6B7280");
+        return `<div class="cat-row">
+          <div class="cat-top">
+            <span class="name">${esc(it.label)}${it.kind==="recurring" ? ` <span class="badge badge-recurring">Récurrent</span>` : ""}</span>
+            <span class="amt" style="color:var(--expense);">${money(it.amount)}</span>
+          </div>
+          <div class="cat-top" style="margin-top:0;">
+            <span class="hint">${it.sub}</span>
+            <span class="hint" style="color:${dueColor};font-weight:700;">${due}</span>
+          </div>
+        </div>`;
+      }).join("")}
+    </div>
+  ` : "";
+
   return `
     <div class="pagehead">
       <div><h1>Tableau de bord</h1><p class="hint">Vue d'ensemble de vos finances</p></div>
@@ -1579,6 +1729,7 @@ function renderDashboard(){
       </div>
     </div>
     <div class="grid cols-auto" style="margin-bottom:14px;">${accCards}</div>
+    ${upcomingHtml}
     <div class="grid cols-2" style="margin-bottom:20px;">
       <div class="card stat-card" style="border-left:3px solid var(--warn);cursor:pointer;" id="pendingIncomeCard">
         <div class="lbl">REVENUS EN ATTENTE</div>
@@ -1618,6 +1769,7 @@ function renderTxItem(t){
       : `<span class="badge badge-loan">À rembourser</span>`);
   }
   if(t.isSettlement) badges.push(`<span class="badge badge-settlement">Règlement</span>`);
+  if(t.tag && t.tag.trim()) badges.push(`<span class="badge badge-tag">${icon("tag",11)}${esc(t.tag.trim())}</span>`);
 
   const title = t.note ? t.note : t.category;
   const subtitle = `${esc(t.category)} • ${esc(accountLabel(t.account))} • ${dateShort(t.date)}`;
@@ -1920,6 +2072,54 @@ function renderPeriod(){
     </div>
     <button class="btn secondary small" id="pToday" type="button">${todayLabel}</button>`;
 
+  const tags = allTags();
+  const activeTag = viewState.period.tagFilter;
+  const tagOptionsHtml = `<option value="">— Aucun —</option>` + tags.map(tg=>`<option value="${esc(tg)}" ${activeTag===tg?"selected":""}>${esc(tg)}</option>`).join("");
+  let tagSummaryHtml = "";
+  if(activeTag){
+    // All-time, independent of the currently selected period — shows the cumulative cost
+    // of a specific event/tag without affecting the monthly figures shown above.
+    const tagTx = state.transactions.filter(t=> isActiveTx(t) && (t.tag||"").trim()===activeTag);
+    const tagStats = sumByType(tagTx);
+    const tagListHtml = tagTx.length
+      ? tagTx.sort((a,b)=> a.date<b.date?1:-1).map(renderTxItem).join("")
+      : `<div class="empty">Aucune transaction avec ce tag.</div>`;
+
+    const pendingIncTag = state.pendingIncomes.filter(i=> i.status==="attente" && (i.tag||"").trim()===activeTag);
+    const pendingExpTag = state.plannedExpenses.filter(e=> e.status==="attente" && (e.tag||"").trim()===activeTag);
+    const pendingIncTotal = pendingIncTag.reduce((s,i)=>s+pendingIncomeAmount(i),0);
+    const pendingExpTotal = pendingExpTag.reduce((s,e)=>s+e.amount,0);
+    const hasPending = pendingIncTag.length || pendingExpTag.length;
+    const pendingHtml = hasPending ? `
+        <div class="grid cols-2" style="margin-top:14px;margin-bottom:6px;">
+          <div class="card stat-card" style="border-left:3px solid var(--warn);"><div class="lbl">Revenus à venir (tag)</div><div class="amt" style="color:var(--warn);">${money(pendingIncTotal)}</div><div class="hint">${pendingIncTag.length} en attente</div></div>
+          <div class="card stat-card" style="border-left:3px solid var(--expense);"><div class="lbl">Dépenses à venir (tag)</div><div class="amt" style="color:var(--expense);">${money(pendingExpTotal)}</div><div class="hint">${pendingExpTag.length} en attente</div></div>
+        </div>
+        <div class="card stat-card" style="margin-bottom:14px;"><div class="lbl">Coût total estimé (réalisé + à venir)</div><div class="amt">${money(tagStats.expense + pendingExpTotal - pendingIncTotal - tagStats.income)}</div><div class="hint">Dépenses moins revenus, réalisés et à venir confondus</div></div>
+      ` : "";
+
+    tagSummaryHtml = `
+      <div class="card" style="margin-bottom:16px;border-left:3px solid var(--transfer);">
+        <h2 style="margin-bottom:4px;">${icon("tag",18)} Tag « ${esc(activeTag)} » — toutes périodes confondues</h2>
+        <p class="hint" style="margin-bottom:12px;">Ce total n'affecte pas les chiffres du mois en cours ci-dessus.</p>
+        <div class="grid cols-4" style="margin-bottom:14px;">
+          <div class="card stat-card"><div class="lbl">Revenus</div><div class="amt" style="color:var(--income);">${money(tagStats.income)}</div></div>
+          <div class="card stat-card"><div class="lbl">Dépenses</div><div class="amt" style="color:var(--expense);">${money(tagStats.expense)}</div></div>
+          <div class="card stat-card"><div class="lbl">Net</div><div class="amt">${money(tagStats.net)}</div></div>
+          <div class="card stat-card"><div class="lbl">Transactions</div><div class="amt">${tagTx.length}</div></div>
+        </div>
+        ${pendingHtml}
+        ${tagListHtml}
+      </div>
+    `;
+  }
+  const tagFilterHtml = `
+    <div class="toolbar" style="margin-top:10px;">
+      <span class="hint">Filtrer par tag :</span>
+      <select id="periodTagSelect">${tagOptionsHtml}</select>
+    </div>
+  `;
+
   return `
     <div class="pagehead">
       <div><h1>Mois &amp; Année</h1><p class="hint">Historique et récapitulatif par période</p></div>
@@ -1930,16 +2130,20 @@ function renderPeriod(){
       ${customControlsHtml}
       ${pagerHtml}
     </div>
-    <div class="grid cols-4" style="margin-bottom:16px;">
+    ${tagFilterHtml}
+    <div class="grid cols-4" style="margin:16px 0;">
       <div class="card stat-card"><div class="lbl">Revenus</div><div class="amt" style="color:var(--income);">${money(income)}</div></div>
       <div class="card stat-card"><div class="lbl">Dépenses</div><div class="amt" style="color:var(--expense);">${money(expense)}</div></div>
       <div class="card stat-card"><div class="lbl">Net</div><div class="amt">${money(net)}</div></div>
       <div class="card stat-card"><div class="lbl">Transactions</div><div class="amt">${list.length}</div></div>
     </div>
+    ${tagSummaryHtml}
     ${bodyHtml}
   `;
 }
 function bindPeriodView(){
+  const tagSel = document.getElementById("periodTagSelect");
+  if(tagSel) tagSel.addEventListener("change", ()=>{ viewState.period.tagFilter = tagSel.value; render(); });
   document.getElementById("periodModeSelect").addEventListener("change", (e)=>{
     viewState.period.mode = e.target.value;
     render();
@@ -2188,10 +2392,12 @@ function renderIncome(){
   function pendingRow(inc){
     const amt = pendingIncomeAmount(inc);
     const modeTxt = inc.mode==="hours" ? `${inc.hours||0} h × ${money(inc.rate||0)}` : "Montant direct";
+    const tagBadge = inc.tag && inc.tag.trim() ? `<span class="badge badge-tag">${icon("tag",11)}${esc(inc.tag.trim())}</span>` : "";
     return `<div class="income-item">
       <div class="ii-main" data-income-id="${inc.id}">
         <div class="top">${esc(inc.label)}</div>
         <div class="meta">${modeTxt} · prévu le ${inc.expectedDate?dateShort(inc.expectedDate):"—"}</div>
+        ${tagBadge ? `<div class="badge-row">${tagBadge}</div>` : ""}
       </div>
       <div class="ii-amt" style="color:var(--warn);">${money(amt)}</div>
       <button type="button" class="settle-btn" data-receive-income="${inc.id}">Marquer reçu</button>
@@ -2263,10 +2469,12 @@ function renderExpenses(){
   const pendingTotal = pending.reduce((s,e)=>s+e.amount,0);
 
   function pendingRow(e){
+    const tagBadge = e.tag && e.tag.trim() ? `<span class="badge badge-tag">${icon("tag",11)}${esc(e.tag.trim())}</span>` : "";
     return `<div class="income-item">
       <div class="ii-main" data-expense-id="${e.id}">
         <div class="top">${esc(e.label)}</div>
         <div class="meta">${esc(accountLabel(e.account))} · ${esc(e.category)} · prévu le ${e.expectedDate?dateShort(e.expectedDate):"—"}</div>
+        ${tagBadge ? `<div class="badge-row">${tagBadge}</div>` : ""}
       </div>
       <div class="ii-amt" style="color:var(--expense);">${money(e.amount)}</div>
       <button type="button" class="settle-btn" style="color:var(--expense);" data-pay-expense="${e.id}">Marquer réglé</button>
@@ -2608,6 +2816,8 @@ function openTxDialog(id){
   document.getElementById("tx_account").value = tx ? tx.account : getDefaultAccountId();
   document.getElementById("tx_category").value = tx ? tx.category : state.categories[0];
   document.getElementById("tx_note").value = tx ? (tx.note||"") : "";
+  document.getElementById("tx_tag").value = tx ? (tx.tag||"") : "";
+  document.getElementById("tagSuggestions").innerHTML = allTags().map(t=>`<option value="${esc(t)}">`).join("");
 
   const isRootRecurring = tx && tx.recurrence && tx.recurrence.enabled;
   const isOccurrence = tx && tx.seriesId;
@@ -2780,6 +2990,7 @@ txForm.addEventListener("submit", (e)=>{
     amount: amount,
     date: document.getElementById("tx_date").value || todayISO(),
     note: document.getElementById("tx_note").value.trim(),
+    tag: document.getElementById("tx_tag").value.trim(),
     recurrence: recurring ? {
       enabled:true,
       interval: Number(document.getElementById("rec_interval").value)||1,
@@ -3022,7 +3233,7 @@ settleForm.addEventListener("submit", (e)=>{
     if(amount<=0){ alert("Merci d'indiquer un montant valide."); return; }
     const newTx = {
       id: uid(), type:"revenu", account, category:"Salaire", amount, date,
-      note: inc.label, recurrence:null, seriesId:null, isSettlement:true
+      note: inc.label, tag: inc.tag||"", recurrence:null, seriesId:null, isSettlement:true
     };
     state.transactions.push(newTx);
     inc.status = "recu"; inc.receivedDate = date; inc.receivedAccount = account; inc.txId = newTx.id; inc.receivedAmount = amount;
@@ -3032,7 +3243,7 @@ settleForm.addEventListener("submit", (e)=>{
     if(amount<=0){ alert("Merci d'indiquer un montant valide."); return; }
     const newTx = {
       id: uid(), type:"depense", account, category:pe.category, amount, date,
-      note: pe.label, recurrence:null, seriesId:null, isSettlement:true
+      note: pe.label, tag: pe.tag||"", recurrence:null, seriesId:null, isSettlement:true
     };
     state.transactions.push(newTx);
     pe.status = "reglee"; pe.paidDate = date; pe.paidAccount = account; pe.txId = newTx.id; pe.paidAmount = amount;
@@ -3065,8 +3276,7 @@ settleForm.addEventListener("submit", (e)=>{
       let amount = Number(document.getElementById("settle_amount").value)||0;
       amount = Math.min(Math.max(amount,0.01), Math.abs(group.net));
       const direction = settleContext.direction;
-      const lines = group.lines.filter(l=>l.direction===direction && l.remaining>0.004).sort((a,b)=> a.date<b.date?-1:1);
-      settleLines(lines, amount, direction, date, account, group.name);
+      settleGroupNet(group, amount, direction, date, account, group.name);
     }
   }
   saveState();
@@ -3169,6 +3379,8 @@ function openIncomeDialog(id){
   document.getElementById("inc_hours").value = inc && inc.mode==="hours" ? inc.hours : "";
   document.getElementById("inc_rate").value = inc && inc.mode==="hours" ? inc.rate : "";
   document.getElementById("inc_date").value = inc ? (inc.expectedDate||"") : todayISO();
+  document.getElementById("inc_tag").value = inc ? (inc.tag||"") : "";
+  document.getElementById("tagSuggestions").innerHTML = allTags().map(t=>`<option value="${esc(t)}">`).join("");
   updateIncomeModeVisibility();
   updateIncomeComputed();
   incomeDialog.showModal();
@@ -3202,7 +3414,8 @@ incomeForm.addEventListener("submit", (e)=>{
     amount: Number(document.getElementById("inc_amount").value)||0,
     hours: Number(document.getElementById("inc_hours").value)||0,
     rate: Number(document.getElementById("inc_rate").value)||0,
-    expectedDate: document.getElementById("inc_date").value || null
+    expectedDate: document.getElementById("inc_date").value || null,
+    tag: document.getElementById("inc_tag").value.trim()
   };
   const computedAmt = incomeFormMode==="hours" ? payload.hours*payload.rate : payload.amount;
   if(!computedAmt || computedAmt<=0){ alert("Merci d'indiquer un montant (ou des heures et un taux) valide."); return; }
@@ -3437,6 +3650,8 @@ function openExpenseDialog(id){
   document.getElementById("pe_account").innerHTML = accountOptionsHtml(pe ? pe.account : getDefaultAccountId());
   document.getElementById("pe_category").innerHTML = state.categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
   document.getElementById("pe_category").value = pe ? pe.category : state.categories[0];
+  document.getElementById("pe_tag").value = pe ? (pe.tag||"") : "";
+  document.getElementById("tagSuggestions").innerHTML = allTags().map(t=>`<option value="${esc(t)}">`).join("");
   expenseDialog.showModal();
 }
 expenseForm.addEventListener("submit", (e)=>{
@@ -3449,7 +3664,8 @@ expenseForm.addEventListener("submit", (e)=>{
     label, amount,
     expectedDate: document.getElementById("pe_date").value || todayISO(),
     account: document.getElementById("pe_account").value,
-    category: document.getElementById("pe_category").value
+    category: document.getElementById("pe_category").value,
+    tag: document.getElementById("pe_tag").value.trim()
   };
   if(!id){
     payload.id = uid();
