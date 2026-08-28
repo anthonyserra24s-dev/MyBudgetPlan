@@ -974,7 +974,8 @@ function defaultState(){
     debts: [],
     performanceLogs: [],
     variationSettings: { mode:"allTime", customInterval:1, customUnit:"mois" },
-    defaultAccountId: "courant"
+    defaultAccountId: "courant",
+    budgetCaps: {}
   };
 }
 
@@ -1084,7 +1085,8 @@ function loadState(){
       debts: parsed.debts || [],
       performanceLogs: parsed.performanceLogs || [],
       variationSettings: Object.assign({mode:"allTime", customInterval:1, customUnit:"mois"}, parsed.variationSettings||{}),
-      defaultAccountId: parsed.defaultAccountId || "courant"
+      defaultAccountId: parsed.defaultAccountId || "courant",
+      budgetCaps: parsed.budgetCaps || {}
     });
     return merged;
   }catch(e){
@@ -1400,6 +1402,7 @@ const ROUTES = [
   {id:"expenses", label:"Dépenses à venir", icon:"bill"},
   {id:"period", label:"Mois & Année", icon:"calendar"},
   {id:"debts", label:"Dettes & créances", icon:"people"},
+  {id:"budgets", label:"Plafonds de dépenses", icon:"chart"},
   {id:"promo", label:"Codes promo", icon:"tag"},
   {id:"settings", label:"Paramètres", icon:"sliders"}
 ];
@@ -1410,7 +1413,7 @@ const NAV_GROUPS = [
   {id:"_top", label:null, routes:["dashboard"]},
   {id:"ops", label:"Opérations", icon:"transactions", routes:["transactions","schedule","transfers"]},
   {id:"upcoming", label:"Prévisions", icon:"clock", routes:["income","expenses"]},
-  {id:"analysis", label:"Analyse & suivi", icon:"chart", routes:["period","invest","debts"]},
+  {id:"analysis", label:"Analyse & suivi", icon:"chart", routes:["period","invest","debts","budgets"]},
   {id:"extras", label:"Extras", icon:"tag", routes:["promo"]},
   {id:"_bottom", label:null, routes:["settings"]}
 ];
@@ -1442,11 +1445,7 @@ function handleGroupHeaderClick(group){
   } else {
     sidebarExpandedGroups.add(group.id);
   }
-  if(!wasExpanded && !group.routes.includes(currentRoute)){
-    navigate(group.routes[0]);
-  } else {
-    buildSidebar();
-  }
+  buildSidebar();
 }
 
 function buildSidebar(){
@@ -1523,6 +1522,7 @@ function render(){
     case "expenses": view.innerHTML = renderExpenses(); bindExpensesView(); break;
     case "period": view.innerHTML = renderPeriod(); bindPeriodView(); break;
     case "debts": view.innerHTML = renderDebts(); bindDebtsView(); break;
+    case "budgets": view.innerHTML = renderBudgets(); bindBudgetsView(); break;
     case "promo": view.innerHTML = renderPromo(); bindPromoView(); break;
     case "settings": view.innerHTML = renderSettings(); bindSettingsView(); break;
   }
@@ -2381,6 +2381,60 @@ function bindPromoView(){
 }
 
 /* ---------- Settings ---------- */
+/* ---------- Budgets (plafonds de dépenses par catégorie) ---------- */
+function renderBudgets(){
+  const [mFrom, mTo] = monthRange(new Date().getFullYear(), new Date().getMonth());
+  const monthExpenses = txInPeriod(mFrom, mTo).filter(t=>t.type==="depense");
+  const spentByCat = {};
+  monthExpenses.forEach(t=>{ spentByCat[t.category] = (spentByCat[t.category]||0) + t.amount; });
+
+  const rows = state.categories.map(cat=>{
+    const cap = Number(state.budgetCaps[cat]) || 0;
+    const spent = spentByCat[cat] || 0;
+    const pct = cap>0 ? Math.min(100, Math.round((spent/cap)*100)) : 0;
+    const over = cap>0 && spent>cap;
+    const remaining = cap - spent;
+    const barColor = over ? "var(--expense)" : (pct>=80 ? "var(--warn)" : "var(--income)");
+    const statusHtml = cap>0
+      ? `<div class="cat-top" style="margin-top:8px;margin-bottom:4px;">
+          <span class="hint">${pct}% utilisé</span>
+          <span class="hint" style="${over?"color:var(--expense);font-weight:700;":""}">${over?"Dépassement de ":"Restant : "}${money(Math.abs(remaining))}</span>
+        </div>
+        <div class="barbg"><div class="barfill" style="width:${pct}%;background:${barColor};"></div></div>`
+      : `<p class="hint" style="margin-top:6px;">Aucun plafond défini — la dépense du mois s'élève à ${money(spent)}.</p>`;
+
+    return `
+      <div class="cat-row">
+        <div class="cat-top">
+          <span class="name">${esc(cat)}</span>
+          <div class="field" style="max-width:130px;margin:0;">
+            <input type="number" min="0" step="0.01" data-cap-cat="${esc(cat)}" value="${cap>0?cap:""}" placeholder="Pas de plafond">
+          </div>
+        </div>
+        ${statusHtml}
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="pagehead"><div><h1>Plafonds de dépenses</h1><p class="hint">Définissez un montant maximum mensuel par catégorie et suivez votre progression</p></div></div>
+    <div class="card">
+      ${rows || `<div class="empty">Aucune catégorie pour l'instant.</div>`}
+    </div>
+  `;
+}
+function bindBudgetsView(){
+  document.querySelectorAll("[data-cap-cat]").forEach(input=>{
+    input.addEventListener("change", ()=>{
+      const cat = input.dataset.capCat;
+      const v = Math.max(0, Number(input.value)||0);
+      if(v>0){ state.budgetCaps[cat] = v; } else { delete state.budgetCaps[cat]; }
+      saveState(); render();
+    });
+  });
+}
+
+
 function renderSettings(){
   const accountRows = state.accounts.map(a=>`
     <div class="tx-item" data-open-account="${a.id}">
