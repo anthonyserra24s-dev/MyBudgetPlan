@@ -765,7 +765,7 @@
     </div>
     <form id="perfForm">
       <div class="field"><label for="perf_account">Compte</label><select id="perf_account"></select></div>
-      <div class="field">
+      <div class="field" id="perfSensField">
         <label>Sens</label>
         <div class="segmented" id="perfSensSeg">
           <button type="button" data-val="gain" class="active">Gain</button>
@@ -777,10 +777,11 @@
         <div class="segmented" id="perfModeSeg">
           <button type="button" data-val="percent" class="active">Pourcentage (%)</button>
           <button type="button" data-val="amount">Montant fixe (€)</button>
+          <button type="button" data-val="balance">Solde actuel (€)</button>
         </div>
       </div>
       <div class="field"><label for="perf_value" id="perfValueLabel">Variation (%)</label><input type="number" id="perf_value" step="0.01" min="0" required></div>
-      <div class="field">
+      <div class="field" id="perfPeriodicityField">
         <label for="perf_periodicity">Périodicité</label>
         <select id="perf_periodicity">
           <option value="ponctuel">Ponctuelle (une seule fois)</option>
@@ -795,7 +796,8 @@
         <div class="field" id="perfEndField" style="display:none;"><label for="perf_end">Date de fin (optionnelle)</label><input type="date" id="perf_end"></div>
       </div>
       <div class="field"><label for="perf_note">Note</label><input id="perf_note" placeholder="Précision facultative…"></div>
-      <p class="split-hint">Pour un pourcentage récurrent, chaque variation future sera calculée sur la valeur du portefeuille au moment de son application (effet cumulé).</p>
+      <p class="split-hint" id="perfRecurringHint">Pour un pourcentage récurrent, chaque variation future sera calculée sur la valeur du portefeuille au moment de son application (effet cumulé).</p>
+      <p class="split-hint" id="perfBalanceHint" style="display:none;">Indique le solde total actuel du compte : le gain ou la perte est calculé automatiquement par rapport au solde précédent.</p>
       <div class="dlg-foot">
         <div style="flex:1"></div>
         <button type="button" class="btn secondary" data-close-dialog="perfDialog">Annuler</button>
@@ -969,8 +971,12 @@ function categoryTint(cat){
 }
 // Active history = past transactions + everything within the current calendar month
 // (future recurring occurrences beyond this month live in the Échéancier tab instead).
+// A recurring root whose date hasn't happened yet is NOT active: it isn't debited until
+// its date is reached (ensureOccurrences only materializes it once date <= today), so it
+// must stay out of "Transactions récentes" / the transaction list until then.
 function isActiveTx(t){
   const [, endExclusive] = monthRange(new Date().getFullYear(), new Date().getMonth());
+  if(t.recurrence && t.recurrence.enabled && t.date > todayISO()) return false;
   return t.date < endExclusive;
 }
 
@@ -1251,6 +1257,7 @@ function ensureOccurrences(){
 function generatePerformanceAmount(accountId, mode, value, dateISO){
   if(mode==="amount") return round2(value);
   const base = accountBalanceAtDate(accountId, dateISO);
+  if(mode==="balance") return round2(value - base);
   return round2(base * (value/100));
 }
 function ensurePerformanceOccurrences(){
@@ -2330,7 +2337,7 @@ function renderInvest(){
     .sort((a,b)=> a.date<b.date?1:-1);
   const historyHtml = allLogs.length ? allLogs.map(p=>{
     const sign = p.computedAmount>=0 ? "pos" : "neg";
-    const modeLabel = p.mode==="percent" ? `${p.value>=0?"+":""}${p.value}%` : `${p.value>=0?"+":""}${money(p.value)}`;
+    const modeLabel = p.mode==="percent" ? `${p.value>=0?"+":""}${p.value}%` : p.mode==="balance" ? `Solde → ${money(p.value)}` : `${p.value>=0?"+":""}${money(p.value)}`;
     const badge = (p.recurrence && p.recurrence.enabled) ? `<span class="badge badge-recurring">Récurrent</span>` : (p.seriesId ? `<span class="badge badge-recurring">Auto</span>` : "");
     return `<div class="history-row">
       <div class="hr-info">
@@ -3588,11 +3595,30 @@ function openPerfDialog(accountId){
   document.getElementById("perf_note").value = "";
   document.getElementById("perfEndField").style.display = "none";
   document.getElementById("perfDateLabel").textContent = "Date";
-  updatePerfValueLabel();
+  updatePerfModeUI();
   perfDialog.showModal();
 }
 function updatePerfValueLabel(){
-  document.getElementById("perfValueLabel").textContent = perfFormMode==="percent" ? "Variation (%)" : "Montant (€)";
+  document.getElementById("perfValueLabel").textContent =
+    perfFormMode==="percent" ? "Variation (%)" :
+    perfFormMode==="balance" ? "Solde actuel du compte (€)" : "Montant (€)";
+}
+// "Solde actuel" mode: the person types the account's current total instead of computing the
+// gain/loss themselves — the app derives it from the previous balance. Sens (gain/perte) is
+// meaningless there (the sign comes out of the calculation), and periodicity doesn't make sense
+// either since the app can't guess a future absolute balance, so both are hidden in that mode.
+function updatePerfModeUI(){
+  updatePerfValueLabel();
+  const isBalance = perfFormMode==="balance";
+  document.getElementById("perfSensField").style.display = isBalance ? "none" : "block";
+  document.getElementById("perfPeriodicityField").style.display = isBalance ? "none" : "block";
+  document.getElementById("perfRecurringHint").style.display = isBalance ? "none" : "block";
+  document.getElementById("perfBalanceHint").style.display = isBalance ? "block" : "none";
+  if(isBalance){
+    document.getElementById("perf_periodicity").value = "ponctuel";
+    document.getElementById("perfEndField").style.display = "none";
+    document.getElementById("perfDateLabel").textContent = "Date";
+  }
 }
 document.getElementById("perfSensSeg").addEventListener("click", (e)=>{
   const btn = e.target.closest("button"); if(!btn) return;
@@ -3601,7 +3627,7 @@ document.getElementById("perfSensSeg").addEventListener("click", (e)=>{
 document.getElementById("perfModeSeg").addEventListener("click", (e)=>{
   const btn = e.target.closest("button"); if(!btn) return;
   perfFormMode = btn.dataset.val; setSegActive("perfModeSeg", perfFormMode);
-  updatePerfValueLabel();
+  updatePerfModeUI();
 });
 document.getElementById("perf_periodicity").addEventListener("change", (e)=>{
   const recurring = e.target.value !== "ponctuel";
@@ -3612,12 +3638,15 @@ perfForm.addEventListener("submit", (e)=>{
   e.preventDefault();
   const accountId = document.getElementById("perf_account").value;
   if(!accountId){ alert("Merci de sélectionner un compte d'investissement."); return; }
-  const rawValue = Number(document.getElementById("perf_value").value);
-  if(!rawValue || rawValue<=0){ alert("Merci d'indiquer une valeur valide."); return; }
-  const value = perfFormSens==="perte" ? -rawValue : rawValue;
+  const rawInput = document.getElementById("perf_value").value;
+  const rawValue = Number(rawInput);
+  if(rawInput===""||isNaN(rawValue)||rawValue<0||(perfFormMode!=="balance"&&rawValue<=0)){
+    alert("Merci d'indiquer une valeur valide."); return;
+  }
+  const value = perfFormMode==="balance" ? rawValue : (perfFormSens==="perte" ? -rawValue : rawValue);
   const date = document.getElementById("perf_date").value || todayISO();
   const note = document.getElementById("perf_note").value.trim();
-  const periodicity = document.getElementById("perf_periodicity").value;
+  const periodicity = perfFormMode==="balance" ? "ponctuel" : document.getElementById("perf_periodicity").value;
 
   if(periodicity==="ponctuel"){
     const computedAmount = generatePerformanceAmount(accountId, perfFormMode, value, date);
