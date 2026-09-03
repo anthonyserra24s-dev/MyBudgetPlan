@@ -184,6 +184,7 @@
   .val{font-variant-numeric:tabular-nums;font-weight:700;}
   .val.pos{color:var(--income);}
   .val.neg{color:var(--expense);}
+  .val.neutral{color:var(--text-mute);}
   .val.neu{color:var(--transfer);}
 
   /* category breakdown rows */
@@ -316,6 +317,8 @@
   .perf-card{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
   .perf-card .pf-name{font-weight:700;font-size:1rem;}
   .perf-card .pf-amt{font-size:1.15rem;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px;}
+  .perf-card .pf-breakdown{display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;color:var(--text-mute);margin-top:4px;}
+  .perf-card .pf-breakdown .val{font-weight:700;}
 
   /* ---------- bottom tab bar (mobile) ---------- */
   .bottomnav{
@@ -1146,9 +1149,8 @@ function deltaHtml(current, initial){
   return `${money(initial)} <span class="val ${cls}">(${sign}${money(delta)})</span>`;
 }
 // Reference balance for an account, per the period chosen in Paramètres (drives the +/- indicators everywhere).
-function variationReferenceValue(accountId){
+function variationReferenceDateISO(){
   const v = state.variationSettings || {mode:"allTime"};
-  if(v.mode==="allTime") return Number(getAccount(accountId).initial)||0;
   const today = new Date();
   let refDate;
   if(v.mode==="day") refDate = today;
@@ -1156,7 +1158,43 @@ function variationReferenceValue(accountId){
   else if(v.mode==="year") refDate = new Date(today.getFullYear(), 0, 1);
   else if(v.mode==="custom") refDate = addInterval(today, -(Number(v.customInterval)||1), v.customUnit||"mois");
   else refDate = today;
-  return accountBalanceAtDate(accountId, dayBeforeISO(toISO(refDate)));
+  return dayBeforeISO(toISO(refDate));
+}
+function variationReferenceValue(accountId){
+  const v = state.variationSettings || {mode:"allTime"};
+  if(v.mode==="allTime") return Number(getAccount(accountId).initial)||0;
+  return accountBalanceAtDate(accountId, variationReferenceDateISO());
+}
+function variationReferenceInvested(accountId){
+  const v = state.variationSettings || {mode:"allTime"};
+  if(v.mode==="allTime") return Number(getAccount(accountId).initial)||0;
+  return capitalInvestedAtDate(accountId, variationReferenceDateISO());
+}
+// Pour un compte d'investissement, décompose la variation de la période entre
+// apports/retraits (transferts, neutres) et gain réel (perf) — jamais mélangés.
+function investmentVariationBreakdown(accountId){
+  const refValue = variationReferenceValue(accountId);
+  const refInvested = variationReferenceInvested(accountId);
+  const currentValue = accountBalance(accountId);
+  const currentInvested = capitalInvested(accountId);
+  const totalDelta = round2(currentValue - refValue);
+  const contribDelta = round2(currentInvested - refInvested);
+  const gainDelta = round2(totalDelta - contribDelta);
+  return {refValue, totalDelta, contribDelta, gainDelta};
+}
+function deltaHtmlInvestment(accountId, isInvestment){
+  const {refValue, contribDelta, gainDelta} = investmentVariationBreakdown(accountId);
+  const gainLabel = isInvestment ? "gain" : "flux";
+  const parts = [];
+  if(Math.abs(contribDelta)>=0.005){
+    parts.push(`<span class="val neutral">${contribDelta>0?"+":""}${money(contribDelta)} virement</span>`);
+  }
+  if(Math.abs(gainDelta)>=0.005){
+    const cls = gainDelta>0 ? "pos" : "neg";
+    parts.push(`<span class="val ${cls}">${gainDelta>0?"+":""}${money(gainDelta)} ${gainLabel}</span>`);
+  }
+  if(!parts.length) return `${money(refValue)}`;
+  return `${money(refValue)} ${parts.join(" · ")}`;
 }
 function variationPeriodLabel(){
   const v = state.variationSettings || {mode:"allTime"};
@@ -1356,6 +1394,25 @@ function accountBalanceAtDate(id, dateISO){
 }
 function accountBalance(key){
   return accountBalanceAtDate(key, todayISO());
+}
+// Capital Investi = apport initial + net des transferts (jamais impacté par les gains de performance)
+function capitalInvestedAtDate(id, dateISO){
+  const acct = getAccount(id);
+  const initial = Number(acct.initial)||0;
+  const transferSum = state.transfers
+    .filter(tr=>tr.date<=dateISO && (tr.from===id || tr.to===id))
+    .reduce((acc,tr)=> acc + (tr.to===id ? tr.amount : -tr.amount), 0);
+  return round2(initial + transferSum);
+}
+function capitalInvested(id){
+  return capitalInvestedAtDate(id, todayISO());
+}
+// Gains réels d'un compte d'investissement : Valeur Actuelle - Capital Investi.
+// Un transfert fait bouger valeur ET capital investi du même montant -> gains inchangés.
+function investmentStats(id, dateISO=todayISO()){
+  const currentValue = accountBalanceAtDate(id, dateISO);
+  const invested = capitalInvestedAtDate(id, dateISO);
+  return { currentValue, invested, gains: round2(currentValue - invested) };
 }
 function totalBalance(){
   return state.accounts.reduce((s,a)=>s+accountBalance(a.id),0);
@@ -1681,12 +1738,13 @@ function renderDashboard(){
   const pendingExpTotal = pendingExp.reduce((s,e)=>s+e.amount,0);
 
   const accCards = state.accounts.map(a=>{
+    const deltaLine = deltaHtmlInvestment(a.id, a.isInvestment);
     return `<div class="card acct-card">
       <div class="aicon" style="background:${accountSoft(a.id)};color:${accountColor(a.id)};">${icon(accountIcon(a.id),20)}</div>
       <div style="min-width:0;">
         <div class="lbl">${esc(a.name)}</div>
         <div class="amt">${money(accountBalance(a.id))}</div>
-        <div class="delta-line">${deltaHtml(accountBalance(a.id), variationReferenceValue(a.id))}</div>
+        <div class="delta-line">${deltaLine}</div>
       </div>
     </div>`;
   }).join("");
@@ -2322,15 +2380,22 @@ function renderInvest(){
       <div class="empty card">Aucun compte n'est marqué comme « investissement ». Rendez-vous dans Paramètres → Comptes pour activer le suivi de performance sur un compte.</div>
     `;
   }
-  const cards = invAccounts.map(a=>`
+  const cards = invAccounts.map(a=>{
+    const {currentValue, invested, gains} = investmentStats(a.id);
+    const sign = gains>=0 ? "pos" : "neg";
+    return `
     <div class="card perf-card">
       <div>
         <div class="pf-name">${esc(a.name)}</div>
-        <div class="pf-amt">${money(accountBalance(a.id))}</div>
+        <div class="pf-amt">${money(currentValue)}</div>
+        <div class="pf-breakdown">
+          <span>Capital investi : <strong>${money(invested)}</strong></span>
+          <span class="val ${sign}">Gain : ${gains>=0?"+":""}${money(gains)}</span>
+        </div>
       </div>
       <button type="button" class="btn small" data-open-perf="${a.id}">+ Ajuster la performance</button>
     </div>
-  `).join("");
+  `;}).join("");
 
   const allLogs = state.performanceLogs
     .filter(p=> invAccounts.some(a=>a.id===p.accountId))
@@ -2660,7 +2725,7 @@ function renderSettings(){
       </div>
       <div style="text-align:right;">
         <div class="tx-amt">${money(accountBalance(a.id))}</div>
-        <div class="delta-line">${deltaHtml(accountBalance(a.id), variationReferenceValue(a.id))}</div>
+        <div class="delta-line">${deltaHtmlInvestment(a.id, a.isInvestment)}</div>
       </div>
     </div>
   `).join("");
@@ -3529,7 +3594,7 @@ function openAccountDialog(id){
   const deltaNote = document.getElementById("acc_delta_note");
   if(a){
     deltaNote.style.display = "block";
-    deltaNote.innerHTML = `Solde actuel : ${money(accountBalance(a.id))} — variation ${variationPeriodLabel()} : ${deltaHtml(accountBalance(a.id), variationReferenceValue(a.id))}`;
+    deltaNote.innerHTML = `Solde actuel : ${money(accountBalance(a.id))} — variation ${variationPeriodLabel()} : ${deltaHtmlInvestment(a.id, a.isInvestment)}`;
   } else {
     deltaNote.style.display = "none";
   }
